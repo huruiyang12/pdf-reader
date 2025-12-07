@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>邮件验证</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+</head>
+<body>
+  <main class="container">
+    <h2>完成邮件验证后查看文档</h2>
+    <p>我们已向 {{ recipient_email or '收件人邮箱' }} 发送了验证码（本演示会在后台返回验证码）。请输入验证码完成验证。</p>
+    <form id="verify-form">
+      <label>姓名<input type="text" name="name" placeholder="姓名" required /></label>
+      <label>邮箱<input type="email" name="email" placeholder="邮箱" required /></label>
+      <label>验证码<input type="text" name="code" placeholder="邮件验证码" required /></label>
+      <button type="submit">提交验证</button>
+    </form>
+    <div id="result"></div>
+  </main>
+
+  <script>
+    const form = document.getElementById('verify-form');
+    const result = document.getElementById('result');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(form).entries());
+      const res = await fetch(`/api/share/{{ token }}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) { result.textContent = data.detail || '验证失败'; return; }
+      result.textContent = '验证成功，正在跳转...';
+      setTimeout(() => { window.location.href = '/share/{{ token }}'; }, 500);
+    });
+  </script>
+</body>
+</html>
