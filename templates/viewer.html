@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }} - 阅读</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <style>
+    body, html { margin: 0; height: 100%; overflow: hidden; background: #111; color: #fff; }
+    #viewerContainer { position: relative; height: calc(100vh - 80px); overflow: auto; }
+    .toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.8rem; background: #1d1d1d; }
+    .watermark { position: fixed; inset: 0; pointer-events: none; background-repeat: repeat; opacity: 0.18; mix-blend-mode: lighten; color: #fff; font-weight: 700; font-size: 1.4rem; transform: rotate(-16deg); display: grid; place-items: center; }
+    canvas { width: 100%; margin-bottom: 1rem; background: #222; }
+    #info { padding: 0.5rem 1rem; background: #222; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.min.js"></script>
+</head>
+<body>
+  <div class="watermark">{{ watermark }} · {{ recipient_name }} · 禁止复制/下载</div>
+  <div class="toolbar">
+    <strong style="flex:1">{{ title }}</strong>
+    <button id="zoomOut">-</button>
+    <button id="zoomIn">+</button>
+    <span id="pageInfo"></span>
+  </div>
+  <div id="info"></div>
+  <div id="viewerContainer"></div>
+
+  <script>
+    const token = '{{ token }}';
+    const allowedPages = {{ allowed_pages if allowed_pages is not none else 'null' }};
+    let pdfDoc = null;
+    let scale = 1.2;
+
+    const viewer = document.getElementById('viewerContainer');
+    const pageInfo = document.getElementById('pageInfo');
+    const info = document.getElementById('info');
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.worker.min.js';
+
+    async function loadPdf() {
+      const meta = await fetch(`/api/share/${token}/meta`).then(r => r.json());
+      const url = `/api/share/${token}/file`;
+      const loadingTask = pdfjsLib.getDocument(url);
+      pdfDoc = await loadingTask.promise;
+      const maxPages = allowedPages ? Math.min(allowedPages, pdfDoc.numPages) : pdfDoc.numPages;
+      pageInfo.textContent = `可读页数：${maxPages}/${pdfDoc.numPages}`;
+      info.textContent = meta.mode === 'preview' ? `试读前 ${maxPages} 页` : '浏览模式（已验证）';
+      for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+        renderPage(pageNum);
+      }
+    }
+
+    function renderPage(num) {
+      pdfDoc.getPage(num).then(page => {
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const context = canvas.getContext('2d', { alpha: false });
+        const renderContext = { canvasContext: context, viewport };
+        viewer.appendChild(canvas);
+        page.render(renderContext);
+      });
+    }
+
+    document.getElementById('zoomIn').addEventListener('click', () => {
+      scale = Math.min(scale + 0.2, 3);
+      viewer.innerHTML = '';
+      for (let i = 1; i <= pdfDoc.numPages && (!allowedPages || i <= allowedPages); i++) renderPage(i);
+    });
+    document.getElementById('zoomOut').addEventListener('click', () => {
+      scale = Math.max(scale - 0.2, 0.4);
+      viewer.innerHTML = '';
+      for (let i = 1; i <= pdfDoc.numPages && (!allowedPages || i <= allowedPages); i++) renderPage(i);
+    });
+
+    // 基础防护：禁用右键、复制、打印快捷键
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && ['s','p','c'].includes(e.key.toLowerCase())) e.preventDefault();
+    });
+
+    loadPdf();
+  </script>
+</body>
+</html>

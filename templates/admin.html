@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF 管理后台</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <style>
+    body { padding: 1rem; }
+    .table-scroll { overflow-x: auto; }
+    .pill { padding: 0.2rem 0.6rem; border-radius: 999px; background: #eef; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>在线 PDF 管理后台</h1>
+    <section>
+      <h3>上传文档</h3>
+      <form id="upload-form">
+        <div class="grid">
+          <label>标题<input type="text" name="title" required /></label>
+          <label>上传者<input type="text" name="uploaded_by" required /></label>
+          <label>PDF 文件<input type="file" name="file" accept="application/pdf" required /></label>
+        </div>
+        <button type="submit">上传</button>
+      </form>
+      <div id="upload-result"></div>
+    </section>
+
+    <section>
+      <h3>创建分享</h3>
+      <form id="share-form">
+        <div class="grid">
+          <label>文档
+            <select name="document_id" required>
+              {% for doc in documents %}
+              <option value="{{ doc.id }}">[{{ doc.id }}] {{ doc.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>模式
+            <select name="mode" id="mode" required>
+              <option value="preview">试读模式</option>
+              <option value="browse">浏览模式</option>
+            </select>
+          </label>
+          <label id="allowed-pages-label">允许试读页数<input type="number" name="allowed_pages" min="1" /></label>
+          <label>收件人姓名（浏览模式可选）<input type="text" name="recipient_name" /></label>
+          <label>收件人邮箱（浏览模式可选）<input type="email" name="recipient_email" /></label>
+          <label>水印文本（可选）<input type="text" name="watermark_text" placeholder="示例：仅供内部预览" /></label>
+        </div>
+        <button type="submit">生成分享链接</button>
+      </form>
+      <div id="share-result"></div>
+    </section>
+
+    <section>
+      <h3>文档列表</h3>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>ID</th><th>标题</th><th>文件名</th><th>上传者</th><th>时间</th></tr></thead>
+          <tbody>
+            {% for doc in documents %}
+            <tr>
+              <td>{{ doc.id }}</td>
+              <td>{{ doc.title }}</td>
+              <td>{{ doc.filename }}</td>
+              <td>{{ doc.uploaded_by }}</td>
+              <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h3>分享记录</h3>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Token</th><th>文档</th><th>模式</th><th>页数</th><th>收件人</th><th>邮箱</th><th>验证</th><th>创建时间</th></tr></thead>
+          <tbody>
+            {% for share in shares %}
+            <tr>
+              <td><span class="pill">{{ share.token }}</span></td>
+              <td>{{ share.document_id }}</td>
+              <td>{{ share.mode }}</td>
+              <td>{{ share.allowed_pages or '-' }}</td>
+              <td>{{ share.recipient_name or '-' }}</td>
+              <td>{{ share.recipient_email or '-' }}</td>
+              <td>{{ '已验证' if share.verified else '待验证' }}</td>
+              <td>{{ share.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const uploadForm = document.getElementById('upload-form');
+    const uploadResult = document.getElementById('upload-result');
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(uploadForm);
+      const res = await fetch('/api/admin/upload', { method: 'POST', body: formData });
+      if (!res.ok) { uploadResult.textContent = '上传失败'; return; }
+      const data = await res.json();
+      uploadResult.innerHTML = `<small>上传成功：ID ${data.document_id}，文件 ${data.filename}</small>`;
+      setTimeout(() => location.reload(), 600);
+    });
+
+    const modeSelect = document.getElementById('mode');
+    const allowedPagesLabel = document.getElementById('allowed-pages-label');
+    modeSelect.addEventListener('change', () => {
+      allowedPagesLabel.style.display = modeSelect.value === 'preview' ? 'block' : 'none';
+    });
+    allowedPagesLabel.style.display = modeSelect.value === 'preview' ? 'block' : 'none';
+
+    const shareForm = document.getElementById('share-form');
+    const shareResult = document.getElementById('share-result');
+    shareForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(shareForm).entries());
+      if (payload.allowed_pages === '') payload.allowed_pages = null;
+      payload.allowed_pages = payload.allowed_pages ? Number(payload.allowed_pages) : null;
+      const res = await fetch('/api/admin/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) { shareResult.textContent = data.detail || '生成失败'; return; }
+      const verifyHint = data.verification_code ? `<br/>验证码（模拟邮件）：<strong>${data.verification_code}</strong>` : '';
+      shareResult.innerHTML = `分享链接：<a href="${data.url}" target="_blank">${location.origin}${data.url}</a>${verifyHint}`;
+    });
+  </script>
+</body>
+</html>
